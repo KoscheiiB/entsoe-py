@@ -222,9 +222,17 @@ def parse_installed_capacity_per_plant(xml_text):
         ts = all_series[name]
         all_series[name] = ts[~ts.index.duplicated(keep='first')]
 
+    if not all_series:
+        return pd.DataFrame()
+
     df = pd.DataFrame.from_dict(all_series).T
-    df['Production Type'] = df['Production Type'].map(PSRTYPE_MAPPINGS)
-    df['Name'] = df['Name'].str.encode('latin-1').str.decode('utf-8')
+    # Some XML responses omit <psrtype>, so the column may be absent; guard it.
+    if 'Production Type' in df.columns:
+        df['Production Type'] = df['Production Type'].map(PSRTYPE_MAPPINGS)
+    else:
+        df['Production Type'] = None
+    if 'Name' in df.columns:
+        df['Name'] = df['Name'].str.encode('latin-1').str.decode('utf-8')
     #    df['Status'] = df['Status'].map(BSNTYPE)
     return df
 
@@ -810,10 +818,17 @@ def _parse_generation_timeseries(soup, per_plant: bool = False, include_eic: boo
         name.append(psrtype_name)
 
     if per_plant:
-        plantname = soup.find('name').text
+        name_tag = soup.find('name')
+        if name_tag is not None:
+            plantname = name_tag.text
+        else:
+            # Some plants omit the <name> element; fall back to mRID or "Unknown".
+            mrid_tag = soup.find("mrid")
+            plantname = mrid_tag.text if mrid_tag is not None else "Unknown"
         name.append(plantname)
         if include_eic:
-            eic = soup.find("mrid", codingscheme="A01").text
+            eic_tag = soup.find("mrid", codingscheme="A01")
+            eic = eic_tag.text if eic_tag is not None else "Unknown"
             name.insert(0, eic)
 
 
@@ -845,7 +860,13 @@ def _parse_installed_capacity_per_plant(soup):
                     # 'Status': 'businesstype',
                     'Voltage Connection Level [kV]':
                         'production_powersystemresources.highvoltagelimit'}
-    series = pd.Series(extract_vals).apply(lambda v: soup.find(v).text)
+    def _safe_text(tag):
+        # Some XML responses omit elements (e.g. <psrtype>); return None instead
+        # of crashing on soup.find(tag).text.
+        el = soup.find(tag)
+        return el.text if el is not None else None
+
+    series = pd.Series({k: _safe_text(v) for k, v in extract_vals.items()})
 
     period = soup.find('period')
     series["Start"] = pd.to_datetime(period.find('timeinterval.start').text)
