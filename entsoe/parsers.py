@@ -545,7 +545,11 @@ def _parse_contracted_reserve_series(soup, tz, label):
         # Build dict mapping timestamp -> value using positions for this period
         for point in period.find_all('point'):
             position = int(point.find('position').text)
-            value = float(point.find(label).text)
+            # Some positions carry no price element; skip them instead of crashing.
+            price_el = point.find(label)
+            if price_el is None:
+                continue
+            value = float(price_el.text)
             timestamp = start + (position - 1) * delta
             data[timestamp] = value
     

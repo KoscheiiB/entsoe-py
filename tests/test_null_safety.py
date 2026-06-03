@@ -10,7 +10,10 @@ No network or API key required.
 """
 import pandas as pd
 
+import bs4
+
 from entsoe.parsers import (
+    _parse_contracted_reserve_series,
     _parse_generation_timeseries,
     parse_installed_capacity_per_plant,
 )
@@ -72,3 +75,28 @@ def test_installed_capacity_empty_response_returns_empty_frame():
     df = parse_installed_capacity_per_plant("")
     assert isinstance(df, pd.DataFrame)
     assert df.empty
+
+
+CONTRACTED_RESERVE_MISSING_PRICE = """
+<GL_MarketDocument>
+  <TimeSeries>
+    <businessType>A01</businessType>
+    <flowDirection.Direction>A01</flowDirection.Direction>
+    <Period>
+      <start>2024-01-01T00:00Z</start>
+      <end>2024-01-01T02:00Z</end>
+      <resolution>PT60M</resolution>
+      <Point><position>1</position><procurement_Price.amount>10.5</procurement_Price.amount></Point>
+      <Point><position>2</position></Point>
+    </Period>
+  </TimeSeries>
+</GL_MarketDocument>
+"""
+
+
+def test_contracted_reserve_skips_points_without_price():
+    soup = bs4.BeautifulSoup(CONTRACTED_RESERVE_MISSING_PRICE, "html.parser")
+    df = _parse_contracted_reserve_series(soup, tz=None, label="procurement_price.amount")
+    # position 2 has no price element -> skipped, not an AttributeError
+    assert len(df) == 1
+    assert float(df.iloc[0, 0]) == 10.5
