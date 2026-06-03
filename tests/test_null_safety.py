@@ -15,6 +15,7 @@ import bs4
 from entsoe.parsers import (
     _parse_contracted_reserve_series,
     _parse_generation_timeseries,
+    parse_contracted_reserve_zip,
     parse_installed_capacity_per_plant,
 )
 from entsoe.series_parsers import _extract_timeseries
@@ -100,3 +101,14 @@ def test_contracted_reserve_skips_points_without_price():
     # position 2 has no price element -> skipped, not an AttributeError
     assert len(df) == 1
     assert float(df.iloc[0, 0]) == 10.5
+
+
+def test_contracted_reserve_zip_empty_archive_returns_empty():
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w"):
+        pass  # archive with no XML timeseries (genuinely no data)
+    df = parse_contracted_reserve_zip(buf.getvalue(), tz=None, label="procurement_price.amount")
+    assert isinstance(df, pd.DataFrame)
+    assert df.empty

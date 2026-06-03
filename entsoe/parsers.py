@@ -488,11 +488,14 @@ def parse_contracted_reserve_zip(zip_contents: bytes, tz: str, label: str) -> pd
         with zipfile.ZipFile(BytesIO(archive), 'r') as arc:
             for f in arc.infolist():
                 if f.filename.endswith('xml'):
-                    frame = parse_contracted_reserve(xml_text=arc.read(f), 
+                    frame = parse_contracted_reserve(xml_text=arc.read(f),
                                                     tz=tz, label=label)
                     yield frame
 
-    frames = gen_frames(zip_contents)
+    frames = list(gen_frames(zip_contents))
+    if not frames:
+        # No timeseries in the archive: genuinely no data for this window.
+        return pd.DataFrame()
     df = pd.concat(frames)
     df.sort_index(inplace=True)
     return df
